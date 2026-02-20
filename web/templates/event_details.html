@@ -196,6 +196,8 @@ async function register() {
 
     showRegAlert(`✓ You're registered! Confirmation: ${data.id}`, 'success');
     emailEl.value = '';
+    btn.disabled = false;
+    btn.textContent = 'Register Now';
     // Refresh event data to update counts.
     setTimeout(() => loadEvent(), 600);
   } catch (err) {
