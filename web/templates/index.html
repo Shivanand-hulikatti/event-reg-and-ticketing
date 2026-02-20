@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EventBooking – All Events</title>
+  <link rel="stylesheet" href="/static/styles.css"/>
+</head>
+<body>
+
+<header>
+  <h1>🎟 EventBooking</h1>
+  <span class="spacer"></span>
+  <a href="/templates/create_event.html">+ Create Event</a>
+</header>
+
+<div class="container">
+  <p class="page-title">Upcoming Events</p>
+  <p class="page-sub">Browse and register for events below.</p>
+
+  <div id="alert" class="alert"></div>
+  <div id="event-list"></div>
+</div>
+
+<script>
+  const API = '/events';
+
+  function statusBadge(event) {
+    const pct = event.capacity > 0 ? event.booked_count / event.capacity : 1;
+    if (event.booked_count >= event.capacity) return '<span class="badge badge-red">Full</span>';
+    if (pct >= 0.8) return '<span class="badge badge-yellow">Almost Full</span>';
+    return '<span class="badge badge-green">Open</span>';
+  }
+
+  function barClass(pct) {
+    if (pct >= 1) return 'danger';
+    if (pct >= 0.8) return 'warn';
+    return '';
+  }
+
+  async function loadEvents() {
+    const list = document.getElementById('event-list');
+    const alert = document.getElementById('alert');
+
+    try {
+      const res = await fetch(API);
+      if (!res.ok) throw new Error('Failed to load events');
+      const events = await res.json();
+
+      if (!events || events.length === 0) {
+        list.innerHTML = `
+          <div class="empty">
+            <div class="empty-icon">📭</div>
+            <p>No events yet. <a href="/templates/create_event.html" class="card-link">Create the first one!</a></p>
+          </div>`;
+        return;
+      }
+
+      list.innerHTML = events.map(e => {
+        const remaining = e.capacity - e.booked_count;
+        const pct = e.capacity > 0 ? e.booked_count / e.capacity : 1;
+        const fillW = Math.min(100, Math.round(pct * 100));
+        return `
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.5rem">
+            <div>
+              <div class="card-title">${escHtml(e.name)}</div>
+              <div class="card-meta">${escHtml(e.description || 'No description provided.')}</div>
+            </div>
+            ${statusBadge(e)}
+          </div>
+          <div class="seat-bar-wrapper">
+            <div class="seat-bar-track">
+              <div class="seat-bar-fill ${barClass(pct)}" style="width:${fillW}%"></div>
+            </div>
+            <div class="seat-bar-label">${e.booked_count} / ${e.capacity} seats taken · <strong>${remaining}</strong> remaining</div>
+          </div>
+          <a href="/templates/event_details.html?id=${e.id}" class="card-link">View &amp; Register →</a>
+        </div>`;
+      }).join('');
+    } catch (err) {
+      alert.textContent = 'Error loading events: ' + err.message;
+      alert.className = 'alert alert-error show';
+    }
+  }
+
+  function escHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  loadEvents();
+</script>
+</body>
+</html>

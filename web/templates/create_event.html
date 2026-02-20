@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EventBooking – Create Event</title>
+  <link rel="stylesheet" href="/static/styles.css"/>
+</head>
+<body>
+
+<header>
+  <h1>🎟 EventBooking</h1>
+  <span class="spacer"></span>
+  <a href="/templates/index.html">← All Events</a>
+</header>
+
+<div class="container">
+  <p class="page-title">Create a New Event</p>
+  <p class="page-sub">Fill in the details below to publish your event.</p>
+
+  <div class="card">
+    <div id="alert" class="alert"></div>
+
+    <div class="form-group">
+      <label for="name">Event Name *</label>
+      <input type="text" id="name" placeholder="e.g. Go Concurrency Workshop" maxlength="200"/>
+    </div>
+
+    <div class="form-group">
+      <label for="description">Description</label>
+      <textarea id="description" rows="3" placeholder="What is this event about?"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="capacity">Capacity (seats available) *</label>
+      <input type="number" id="capacity" min="1" max="100000" placeholder="e.g. 50"/>
+    </div>
+
+    <button class="btn btn-primary" id="submit-btn" onclick="createEvent()">
+      Create Event
+    </button>
+    <a href="/templates/index.html" class="btn btn-secondary" style="margin-left:.5rem;text-decoration:none">Cancel</a>
+  </div>
+</div>
+
+<script>
+async function createEvent() {
+  const nameEl = document.getElementById('name');
+  const descEl = document.getElementById('description');
+  const capEl  = document.getElementById('capacity');
+  const btn    = document.getElementById('submit-btn');
+  const alert  = document.getElementById('alert');
+
+  alert.className = 'alert';
+  alert.textContent = '';
+
+  const name     = nameEl.value.trim();
+  const capacity = parseInt(capEl.value, 10);
+
+  if (!name) {
+    showAlert('Event name is required.', 'error');
+    nameEl.focus();
+    return;
+  }
+  if (!capacity || capacity < 1) {
+    showAlert('Capacity must be at least 1.', 'error');
+    capEl.focus();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Creating…';
+
+  try {
+    const res = await fetch('/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description: descEl.value.trim(), capacity }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to create event');
+    }
+
+    showAlert('Event created! Redirecting…', 'success');
+    setTimeout(() => {
+      window.location.href = `/templates/event_details.html?id=${data.id}`;
+    }, 800);
+  } catch (err) {
+    showAlert(err.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Create Event';
+  }
+}
+
+function showAlert(msg, type) {
+  const el = document.getElementById('alert');
+  el.textContent = msg;
+  el.className = `alert alert-${type} show`;
+}
+
+// Allow Enter key to submit
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement.tagName !== 'TEXTAREA') createEvent();
+});
+</script>
+</body>
+</html>

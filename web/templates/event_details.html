@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EventBooking – Event Details</title>
+  <link rel="stylesheet" href="/static/styles.css"/>
+</head>
+<body>
+
+<header>
+  <h1>🎟 EventBooking</h1>
+  <span class="spacer"></span>
+  <a href="/templates/index.html">← All Events</a>
+</header>
+
+<div class="container">
+  <div id="loading" style="text-align:center;padding:3rem;color:var(--muted)">Loading event…</div>
+  <div id="content" style="display:none">
+
+    <!-- Event header -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.75rem;margin-bottom:1.5rem">
+      <div>
+        <p class="page-title" id="event-name">—</p>
+        <p class="page-sub"   id="event-desc">—</p>
+      </div>
+      <span id="event-badge" class="badge"></span>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-value" id="stat-capacity">—</div>
+        <div class="stat-label">Total Seats</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="stat-booked">—</div>
+        <div class="stat-label">Booked</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="stat-remaining" style="color:var(--success)">—</div>
+        <div class="stat-label">Available</div>
+      </div>
+    </div>
+
+    <!-- Capacity bar -->
+    <div class="card" style="margin-bottom:1.5rem">
+      <div class="seat-bar-wrapper">
+        <div class="seat-bar-track">
+          <div class="seat-bar-fill" id="seat-bar" style="width:0%"></div>
+        </div>
+        <div class="seat-bar-label" id="seat-bar-label"></div>
+      </div>
+    </div>
+
+    <!-- Registration form -->
+    <div class="card" id="register-card">
+      <p style="font-size:1rem;font-weight:600;margin-bottom:1rem">Register for This Event</p>
+      <div id="reg-alert" class="alert"></div>
+      <div class="form-group">
+        <label for="email">Your Email Address *</label>
+        <input type="email" id="email" placeholder="you@example.com"/>
+      </div>
+      <button class="btn btn-primary" id="reg-btn" onclick="register()">
+        Register Now
+      </button>
+    </div>
+
+    <!-- Registrations list -->
+    <div class="card">
+      <p style="font-size:1rem;font-weight:600;margin-bottom:1rem">Registrations <span id="reg-count" style="color:var(--muted);font-weight:400"></span></p>
+      <ul class="reg-list" id="reg-list">
+        <li style="color:var(--muted);font-size:.9rem">Loading…</li>
+      </ul>
+    </div>
+
+  </div>
+  <div id="error-msg" class="alert alert-error" style="display:none"></div>
+</div>
+
+<script>
+const params  = new URLSearchParams(location.search);
+const eventId = params.get('id');
+
+if (!eventId) {
+  window.location.href = '/templates/index.html';
+}
+
+async function loadEvent() {
+  try {
+    const [evRes, regRes] = await Promise.all([
+      fetch(`/events/${eventId}`),
+      fetch(`/events/${eventId}/registrations`),
+    ]);
+
+    if (!evRes.ok) throw new Error('Event not found');
+    const event = await evRes.json();
+    const regs  = regRes.ok ? await regRes.json() : [];
+
+    renderEvent(event, regs);
+  } catch (err) {
+    document.getElementById('loading').style.display = 'none';
+    const e = document.getElementById('error-msg');
+    e.textContent = err.message;
+    e.style.display = 'block';
+    e.className = 'alert alert-error show';
+  }
+}
+
+function renderEvent(event, regs) {
+  document.title = `EventBooking – ${event.name}`;
+  document.getElementById('event-name').textContent = event.name;
+  document.getElementById('event-desc').textContent = event.description || 'No description provided.';
+
+  const remaining = event.capacity - event.booked_count;
+  const pct       = event.capacity > 0 ? event.booked_count / event.capacity : 1;
+  const fillW     = Math.min(100, Math.round(pct * 100));
+
+  document.getElementById('stat-capacity').textContent  = event.capacity;
+  document.getElementById('stat-booked').textContent    = event.booked_count;
+  document.getElementById('stat-remaining').textContent = remaining;
+
+  const bar = document.getElementById('seat-bar');
+  bar.style.width = fillW + '%';
+  if (pct >= 1)   bar.classList.add('danger');
+  else if (pct >= 0.8) bar.classList.add('warn');
+
+  document.getElementById('seat-bar-label').textContent =
+    `${event.booked_count} of ${event.capacity} seats booked (${fillW}%)`;
+
+  // Badge
+  const badge = document.getElementById('event-badge');
+  if (event.booked_count >= event.capacity) {
+    badge.textContent = 'Full';
+    badge.className = 'badge badge-red';
+    disableForm('This event is fully booked.');
+  } else if (pct >= 0.8) {
+    badge.textContent = 'Almost Full';
+    badge.className = 'badge badge-yellow';
+  } else {
+    badge.textContent = 'Open';
+    badge.className = 'badge badge-green';
+  }
+
+  // Registrations list
+  const ul = document.getElementById('reg-list');
+  document.getElementById('reg-count').textContent = `(${regs.length})`;
+  if (!regs || regs.length === 0) {
+    ul.innerHTML = '<li style="color:var(--muted);font-size:.9rem">No registrations yet. Be the first!</li>';
+  } else {
+    ul.innerHTML = regs.map(r => `
+      <li>
+        <span class="reg-dot"></span>
+        <span>${escHtml(r.user_email)}</span>
+        <span style="margin-left:auto;color:var(--muted);font-size:.8rem">${formatDate(r.created_at)}</span>
+      </li>`).join('');
+  }
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
+function disableForm(msg) {
+  const card = document.getElementById('register-card');
+  card.innerHTML = `<div class="alert alert-error show">${escHtml(msg)}</div>
+    <p style="color:var(--muted);font-size:.9rem;margin-top:.5rem">Check back later for future events.</p>`;
+}
+
+async function register() {
+  const emailEl = document.getElementById('email');
+  const btn     = document.getElementById('reg-btn');
+  const alert   = document.getElementById('reg-alert');
+
+  alert.className = 'alert';
+  const email = emailEl.value.trim();
+  if (!email || !email.includes('@')) {
+    showRegAlert('Please enter a valid email address.', 'error');
+    emailEl.focus();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Registering…';
+
+  try {
+    const res = await fetch(`/events/${eventId}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_email: email }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Registration failed');
+    }
+
+    showRegAlert(`✓ You're registered! Confirmation: ${data.id}`, 'success');
+    emailEl.value = '';
+    // Refresh event data to update counts.
+    setTimeout(() => loadEvent(), 600);
+  } catch (err) {
+    showRegAlert(err.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Register Now';
+  }
+}
+
+function showRegAlert(msg, type) {
+  const el = document.getElementById('reg-alert');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = `alert alert-${type} show`;
+}
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function escHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// Enter to submit
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') register();
+});
+
+loadEvent();
+</script>
+</body>
+</html>
