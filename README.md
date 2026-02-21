@@ -1,3 +1,7 @@
+# Demo 📽️
+
+https://github.com/user-attachments/assets/1571eec0-8c9f-4cd1-9970-a28282268999
+
 # 🎟 Event Registration & Ticketing System
 
 > A production-ready event booking API that solves the hardest problem in ticketing: **preventing overbooking under high concurrent load**.
