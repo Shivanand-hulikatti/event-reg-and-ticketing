@@ -6,11 +6,11 @@
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                             CLIENT LAYER                                  │
 │                                                                           │
-│    Browser (HTML/JS)          curl / API Client           Test Harness   │
-│    /templates/*.html          POST /events                goroutine×20   │
-└────────────────┬──────────────────────┬────────────────────────┬─────────┘
-                 │  HTTP                │                         │
-                 ▼                      ▼                         ▼
+│    Browser (HTML/JS)          curl / API Client                           │
+│    /templates/*.html          POST /events                                │
+└────────────────┬──────────────────────┬────────────────────────────────────┘
+                 │  HTTP                │
+                 ▼                      ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                           HTTP SERVER (chi)                               │
 │                                                                           │
@@ -272,6 +272,5 @@ This is appropriate for tens of thousands of registrations per day.
 | **Pagination** | Cursor-based pagination for large event/registration lists. |
 | **Migrations** | Use golang-migrate for versioned, reversible migrations. |
 | **Observability** | Structured JSON logging (slog), Prometheus metrics, OpenTelemetry traces. |
-| **Testing** | Unit tests for service layer with mock repositories; table-driven handler tests. |
 | **Deployment** | Dockerfile + docker-compose.yml for one-command local setup. |
 | **Optimistic for reads** | Use a Redis cache for event detail reads to offload PostgreSQL for non-booking queries. |

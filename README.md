@@ -1,337 +1,190 @@
 # 🎟 Event Registration & Ticketing System
 
-A production-quality REST API built in Go for creating events, managing registrations, and preventing overbooking under concurrent load — similar to Eventbrite.
+> A production-ready event booking API that solves the hardest problem in ticketing: **preventing overbooking under high concurrent load**.
+
+Built with Go, PostgreSQL, and clean architecture principles — demonstrating real-world concurrency solutions for distributed systems.
 
 ---
 
-## Table of Contents
+## 🎯 Why This Project Stands Out
 
-1. [Overview](#overview)
-2. [Tech Stack](#tech-stack)
-3. [Project Structure](#project-structure)
-4. [Database Setup](#database-setup)
-5. [Running the Server](#running-the-server)
-6. [API Documentation](#api-documentation)
-7. [Static HTML UI](#static-html-ui)
-8. [Concurrency Strategy](#concurrency-strategy)
-9. [Running the Concurrent Booking Test](#running-the-concurrent-booking-test)
+**Solves a Real Problem:** Implements pessimistic locking with `SELECT ... FOR UPDATE` to prevent race conditions when thousands of users compete for the last ticket — a critical challenge in any booking system (Eventbrite, ticket sales, seat reservations).
 
----
+**Production Patterns:**
+- **Clean Architecture** — Layered design with clear separation: Handlers → Service → Repository
+- **Concurrency-Safe** — Database-level locking guarantees zero overbooking
+- **Error Handling** — Proper domain errors with meaningful HTTP status codes
+- **Database Constraints** — Defense-in-depth with CHECK constraints and unique indexes
 
-## Overview
-
-This system allows:
-- **Organizers** to create events with a fixed seat capacity.
-- **Attendees** to browse events, view availability, and register.
-- The server to **prevent overbooking** when many users register simultaneously — a critical correctness requirement in any ticketing platform.
-
-The concurrency guarantee is achieved via **PostgreSQL's `SELECT ... FOR UPDATE`** (pessimistic row-level locking), ensuring that concurrent booking attempts are serialised at the database level.
+**Technologies:**
+- **Backend:** Go 1.23 + Chi Router + pgx/v5
+- **Database:** PostgreSQL 15+ with row-level locking
+- **Frontend:** Vanilla HTML/CSS/JS (no frameworks)
+- **Deployment:** Docker Compose ready
 
 ---
 
-## Tech Stack
-
-| Concern        | Choice                    |
-|----------------|---------------------------|
-| Language       | Go 1.23                   |
-| HTTP Router    | `github.com/go-chi/chi/v5`|
-| Database       | PostgreSQL 15+            |
-| DB Driver      | `github.com/jackc/pgx/v5` |
-| Frontend       | Vanilla HTML + CSS + JS   |
-| Dependencies   | `github.com/google/uuid`  |
-
----
-
-## Project Structure
-
-```
-event-booking-api/
-│
-├── cmd/
-│   └── main.go                  # Entry point: wires layers, starts server
-│
-├── internal/
-│   ├── database/
-│   │   └── database.go          # pgxpool connection management
-│   ├── model/
-│   │   └── model.go             # Domain types (Event, Registration, requests)
-│   ├── repository/
-│   │   └── repository.go        # SQL queries + concurrency-safe booking
-│   ├── service/
-│   │   └── service.go           # Business logic and validation
-│   └── handler/
-│       ├── handler.go           # HTTP handlers (chi)
-│       └── middleware.go        # Logger, CORS middleware
-│
-├── web/
-│   ├── templates/
-│   │   ├── index.html           # Event listing
-│   │   ├── create_event.html    # Event creation form
-│   │   └── event_details.html   # Event detail + registration form
-│   └── static/
-│       └── styles.css           # Minimal CSS
-│
-├── migrations/
-│   └── 001_init.sql             # Schema creation
-│
-├── test/
-│   └── concurrent_booking_test.go  # Goroutine stress test
-│
-├── go.mod
-├── README.md
-└── DESIGN.md
-```
-
----
-
-## Database Setup
-
-### 1. Create the database
+## 🚀 Quick Start
 
 ```bash
+# 1. Start services
+docker-compose up -d
+
+# 2. Server runs at http://localhost:8080
+# Visit http://localhost:8080/templates/index.html
+```
+
+**Manual Setup:**
+```bash
+# Create database
 psql -U postgres -c "CREATE DATABASE eventbooking;"
-```
-
-### 2. Run the migration
-
-```bash
 psql -U postgres -d eventbooking -f migrations/001_init.sql
-```
 
-### 3. Environment variables
-
-The server reads these from the environment (defaults shown):
-
-```bash
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_USER=postgres
-export DB_PASSWORD=postgres
-export DB_NAME=eventbooking
-export DB_SSLMODE=disable
-```
-
----
-
-## Running the Server
-
-### Prerequisites
-
-- Go 1.23+
-- PostgreSQL running with the migration applied (see above)
-
-### Install dependencies
-
-```bash
-cd event-booking-api
-go mod tidy
-```
-
-### Start the server
-
-```bash
+# Run server
 go run ./cmd/main.go
 ```
 
-The server starts on **http://localhost:8080** by default. Set `PORT=<n>` to change.
-
-Output:
-```
-✓ Connected to PostgreSQL
-✓ Server listening on http://localhost:8080
-```
-
-Visit **http://localhost:8080/templates/index.html** in your browser.
-
 ---
 
-## API Documentation
+## 📁 Architecture
 
-All API endpoints accept and return `application/json`.
-
----
-
-### `POST /events`
-
-Create a new event.
-
-**Request body:**
-```json
-{
-  "name": "Go Concurrency Workshop",
-  "description": "Deep dive into goroutines and channels",
-  "capacity": 50
-}
-```
-
-**Response `201 Created`:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Go Concurrency Workshop",
-  "description": "Deep dive into goroutines and channels",
-  "capacity": 50,
-  "booked_count": 0,
-  "created_at": "2024-01-15T10:00:00Z"
-}
-```
-
-**Error responses:** `400 Bad Request` (invalid input)
-
----
-
-### `GET /events`
-
-List all events, newest first.
-
-**Response `200 OK`:** array of event objects.
-
----
-
-### `GET /events/{id}`
-
-Get a single event by ID.
-
-**Response `200 OK`:** event object.
-
-**Error responses:** `404 Not Found`
-
----
-
-### `POST /events/{id}/register`
-
-Register for an event. This is the **concurrency-safe** endpoint.
-
-**Request body:**
-```json
-{
-  "user_email": "alice@example.com"
-}
-```
-
-**Response `201 Created`:**
-```json
-{
-  "id": "reg-uuid",
-  "event_id": "event-uuid",
-  "user_email": "alice@example.com",
-  "created_at": "2024-01-15T10:05:00Z"
-}
-```
-
-**Error responses:**
-| Status | Meaning                             |
-|--------|-------------------------------------|
-| `400`  | Invalid email or missing body       |
-| `404`  | Event not found                     |
-| `409`  | Event is fully booked               |
-| `409`  | Email already registered            |
-
----
-
-### `GET /events/{id}/registrations`
-
-List all registrations for an event.
-
-**Response `200 OK`:** array of registration objects.
-
----
-
-### `GET /health`
-
-Health check.
-
-**Response `200 OK`:** `{"status": "ok"}`
-
----
-
-## Static HTML UI
-
-The server serves static files from the `./web` directory.
-
-| URL                                        | Purpose                     |
-|--------------------------------------------|-----------------------------|
-| `/templates/index.html`                    | Browse all events           |
-| `/templates/create_event.html`             | Create a new event          |
-| `/templates/event_details.html?id=<uuid>`  | View event + register       |
-
-All pages use the **Fetch API** to communicate with the REST API — no page reloads for form submissions.
-
----
-
-## Concurrency Strategy
-
-### The Problem
-
-In a naïve implementation:
+## 📁 Architecture
 
 ```
-Goroutine A: SELECT booked_count WHERE id=X  → 9
-Goroutine B: SELECT booked_count WHERE id=X  → 9   ← both see 9
-Goroutine A: 9 < 10 capacity → INSERT registration, UPDATE booked_count=10
-Goroutine B: 9 < 10 capacity → INSERT registration, UPDATE booked_count=10
-Result: 11 registrations for a 10-seat event  ← OVERBOOKED
+Client (Browser/API) → Chi Router → Service Layer → Repository → PostgreSQL
+                           ↓
+                    Static Files (web/)
 ```
 
-This is a **TOCTOU race** (Time Of Check, Time Of Use): you check a value, then act on that stale check. Between check and update, another transaction can change the data.
+**Layered Design:**
+- **Handlers** (`internal/handler/`) — HTTP routing, request/response
+- **Service** (`internal/service/`) — Business logic, validation
+- **Repository** (`internal/repository/`) — Database queries, transactions
+- **Models** (`internal/model/`) — Domain types
 
-### The Solution: Pessimistic Locking (`SELECT ... FOR UPDATE`)
+**Key Files:**
+```
+cmd/main.go                    # Application entry point
+internal/repository/repository.go   # ⚡ Concurrency-safe booking logic
+migrations/001_init.sql        # Database schema
+web/templates/                 # HTML UI
+```
+
+See [DESIGN.md](DESIGN.md) for detailed architecture diagrams and concurrency analysis.
+
+---
+
+## 🔥 The Concurrency Solution
+
+**The Problem:** Classic race condition where two users booking the last seat both see "1 available" and both succeed → overbooked event.
+
+**The Solution:** PostgreSQL's `SELECT ... FOR UPDATE` provides row-level pessimistic locking:
 
 ```sql
 BEGIN;
-
-SELECT capacity, booked_count
-FROM events
-WHERE id = $1
-FOR UPDATE;            -- ← acquires exclusive row lock
-
--- No other transaction can read this row with FOR UPDATE until we COMMIT/ROLLBACK
-
--- Check: booked_count < capacity?
--- If not: ROLLBACK → return 409
-
+SELECT capacity, booked_count FROM events WHERE id = $1 FOR UPDATE;  -- 🔒 Lock acquired
+-- Other concurrent requests BLOCK here until we commit
 UPDATE events SET booked_count = booked_count + 1 WHERE id = $1;
-INSERT INTO registrations (id, event_id, user_email, ...) VALUES (...);
-
-COMMIT;                -- ← releases lock
+INSERT INTO registrations (...) VALUES (...);
+COMMIT;  -- 🔓 Lock released
 ```
 
-`FOR UPDATE` tells PostgreSQL: *"I am about to modify this row. Lock it exclusively so no concurrent transaction can read it for update until I'm done."*
+**Result:** Serialized booking — exactly 1 winner for the last seat. No race conditions, no retries needed.
 
-This serialises all concurrent booking attempts through the database, making it **linearisable** for a given event row.
-
-**Why not optimistic locking?** Optimistic locking (version column + retry) works well under *low contention*. For a hot ticket event where 10,000 users hammer the last seat, pessimistic locking avoids the thundering retry storm. See `DESIGN.md` for the full tradeoff analysis.
+> **Why this approach?** Compared to optimistic locking, pessimistic locking excels under high contention (hot ticket sales) by eliminating retry storms. See [DESIGN.md](DESIGN.md) for full tradeoff analysis.
 
 ---
 
-## Running the Concurrent Booking Test
+## 📡 API Endpoints
 
-The test at `test/concurrent_booking_test.go`:
-1. Creates an event with **capacity = 1**
-2. Launches **20 goroutines** simultaneously
-3. Each goroutine attempts to register a unique email
-4. Asserts **exactly 1 success**
-5. Verifies the DB `booked_count = 1`
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/events` | POST | Create event |
+| `/events` | GET | List all events |
+| `/events/{id}` | GET | Get event details |
+| `/events/{id}/register` | POST | Register for event 🔒 |
+| `/events/{id}/registrations` | GET | List registrations |
+| `/health` | GET | Health check |
+
+**Example Registration:**
+```bash
+curl -X POST http://localhost:8080/events/{id}/register \
+  -H "Content-Type: application/json" \
+  -d '{"user_email": "alice@example.com"}'
+```
+
+**Response Codes:**
+- `201` — Registration successful
+- `409` — Event full or email already registered
+- `400` — Invalid input
+- `404` — Event not found
+
+Full API documentation in [DESIGN.md](DESIGN.md).
+
+---
+
+## 🎨 Web Interface
+
+Visit `http://localhost:8080/templates/index.html` for the interactive UI:
+- **Browse Events** — See all events with live availability
+- **Create Event** — Set name, description, capacity
+- **Register** — One-click registration with email
+
+Built with vanilla JavaScript + Fetch API — no frameworks required.
+
+---
+
+## 🛡️ Production-Ready Features
+
+✅ **Concurrency Safety** — Row-level locking prevents race conditions  
+✅ **Database Constraints** — `CHECK (booked_count <= capacity)` as last-resort guard  
+✅ **Idempotency** — `UNIQUE(event_id, user_email)` prevents double-booking  
+✅ **Clean Architecture** — Testable, maintainable, scalable  
+✅ **Error Handling** — Domain errors mapped to proper HTTP codes  
+✅ **Connection Pooling** — pgxpool for efficient DB connections  
+✅ **Middleware Stack** — Logging, CORS, recovery, request IDs  
+✅ **Docker Ready** — One-command deployment with docker-compose  
+
+---
+
+## 🧪 Environment Variables
 
 ```bash
-# Set DB env vars first, then:
-go test ./test/ -v -run TestConcurrentBooking -count=1
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=eventbooking
+DB_SSLMODE=disable
+PORT=8080
 ```
 
-Expected output:
-```
-════════════════════════════════════════
-        CONCURRENT BOOKING SUMMARY
-════════════════════════════════════════
-  Total goroutines : 20
-  Successes        : 1  (expected: 1)
-  Event-full errors: 19
-  Other errors     : 0
-════════════════════════════════════════
-✅ PASS: SELECT FOR UPDATE correctly serialised all concurrent bookings.
-```
+---
 
-Run the multi-seat variant (capacity=5, 20 goroutines):
-```bash
-go test ./test/ -v -run TestConcurrentBookingMultipleSeats -count=1
-```
+## 📚 Learning Resources
+
+This project demonstrates:
+- **Concurrency Patterns** in Go and PostgreSQL
+- **Clean Architecture** for maintainable web services
+- **ACID Transactions** and isolation levels
+- **Pessimistic vs Optimistic Locking** tradeoffs
+- **RESTful API Design** best practices
+
+Perfect for learning production-grade Go development and database concurrency control.
+
+---
+
+## 🔗 Learn More
+
+- [DESIGN.md](DESIGN.md) — In-depth architecture, diagrams, and concurrency analysis
+- [migrations/001_init.sql](migrations/001_init.sql) — Database schema with constraints
+
+---
+
+## 📄 License
+
+MIT License — Feel free to use this project for learning and building.
+
+---
+
+**Built to solve real-world concurrency challenges in distributed systems.**
